@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YT Music Downloader</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--bg4:#22222e;
+  --accent:#e8ff47;--accent2:#7c3aed;--text:#f0f0f8;--muted:#8888aa;
+  --border:#ffffff18;--red:#ff4d6d;--green:#4ade80;
+  --font-mono:'Space Mono',monospace;--font-body:'DM Sans',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden}
+.header{padding:28px 32px 0;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:var(--font-mono);font-size:13px;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase}
+.logo span{color:var(--muted)}
+.api-pills{display:flex;gap:6px}
+.pill{font-size:11px;font-family:var(--font-mono);padding:3px 9px;border-radius:20px;border:1px solid var(--border)}
+.pill.on{border-color:#4ade8044;color:var(--green);background:#4ade8010}
+.pill.off{border-color:#ff4d6d33;color:#ff4d6d88;background:#ff4d6d08}
+.main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 60px);gap:0}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:24px 20px;display:flex;flex-direction:column;gap:20px}
+.section-label{font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;margin-bottom:10px}
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mode-btn{background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-family:var(--font-body);font-size:12px;padding:8px 6px;border-radius:8px;cursor:pointer;transition:all .18s;text-align:center;line-height:1.3}
+.mode-btn:hover{border-color:#ffffff30;color:var(--text)}
+.mode-btn.active{background:#e8ff4712;border-color:var(--accent);color:var(--accent)}
+.mode-btn .icon{font-size:16px;display:block;margin-bottom:3px}
+.genre-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;background:transparent}
+.chip:hover{border-color:#ffffff30;color:var(--text)}
+.chip.active{border-color:var(--accent2);color:#c4b5fd;background:#7c3aed15}
+.count-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.count-val{font-family:var(--font-mono);font-size:20px;color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent);height:3px}
+.kw-input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:13px;padding:9px 12px;border-radius:8px;outline:none}
+.kw-input:focus{border-color:#ffffff40}
+.kw-input::placeholder{color:var(--muted)}
+.search-btn{width:100%;background:var(--accent);color:#0a0a0f;font-family:var(--font-mono);font-size:12px;font-weight:700;padding:12px;border-radius:8px;border:none;cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;transition:all .2s;margin-top:auto}
+.search-btn:hover{background:#f5ff7a;transform:translateY(-1px)}
+.search-btn:active{transform:translateY(0)}
+.search-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.content{background:var(--bg);overflow-y:auto;padding:24px 28px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.results-info{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.results-info strong{color:var(--text)}
+.toolbar-right{display:flex;gap:8px;align-items:center}
+.select-all-btn{font-size:12px;color:var(--muted);background:transparent;border:1px solid var(--border);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:var(--font-body);transition:all .15s}
+.select-all-btn:hover{border-color:#ffffff30;color:var(--text)}
+.dl-btn{background:var(--accent2);color:#fff;font-family:var(--font-mono);font-size:11px;font-weight:700;padding:7px 16px;border-radius:6px;border:none;cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;transition:all .18s}
+.dl-btn:hover{background:#6d28d9}
+.dl-btn:disabled{opacity:.35;cursor:not-allowed}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.vcard{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:all .2s;position:relative}
+.vcard:hover{border-color:#ffffff28;transform:translateY(-2px)}
+.vcard.selected{border-color:var(--accent2);background:#7c3aed0d}
+.vcard.downloaded{border-color:#4ade8044}
+.vcard-thumb{position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:var(--bg3)}
+.vcard-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.vcard:hover .vcard-thumb img{transform:scale(1.04)}
+.thumb-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px}
+.duration-badge{position:absolute;bottom:6px;right:6px;background:#000000cc;font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:4px;color:#fff}
+.select-overlay{position:absolute;inset:0;background:#7c3aed18;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.vcard.selected .select-overlay{opacity:1}
+.check-circle{width:32px;height:32px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.vcard-body{padding:10px 12px 12px}
+.vcard-song{font-size:13px;font-weight:500;color:var(--text);line-height:1.35;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.vcard-artist{font-size:11px;color:var(--muted);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vcard-views{font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.vcard-views span{color:#6366f1}
+.downloaded-badge{position:absolute;top:7px;left:7px;background:#4ade8022;border:1px solid #4ade8055;color:var(--green);font-size:10px;font-family:var(--font-mono);padding:2px 7px;border-radius:20px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;gap:12px;color:var(--muted)}
+.empty-icon{font-size:40px;opacity:.5}
+.empty-text{font-size:14px;text-align:center;max-width:260px;line-height:1.6}
+.loading-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.skel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.skel-thumb{width:100%;padding-top:56.25%;background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+.skel-line{height:12px;margin:10px 12px 5px;border-radius:4px;background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+.skel-line.short{width:60%;margin-top:0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.dl-progress{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px}
+.dl-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.dl-title{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.dl-counter{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.dl-tracks{display:flex;flex-direction:column;gap:8px}
+.dl-track{display:flex;align-items:center;gap:10px;font-size:12px}
+.dl-track-name{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-track-status{font-family:var(--font-mono);font-size:10px;min-width:70px;text-align:right}
+.status-pending{color:var(--muted)}
+.status-downloading{color:#f59e0b;animation:blink 1s infinite}
+.status-done{color:var(--green)}
+.status-error{color:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg3);border:1px solid var(--border);padding:12px 18px;border-radius:10px;font-size:13px;font-family:var(--font-mono);z-index:100;animation:toastIn .3s ease;max-width:320px}
+.toast.success{border-color:#4ade8055;color:var(--green)}
+.toast.error{border-color:#ff4d6d44;color:var(--red)}
+@keyframes toastIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.error-banner{background:#ff4d6d12;border:1px solid #ff4d6d33;border-radius:10px;padding:14px 18px;color:#ff8099;font-size:13px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">YT<span>.</span>Music<span>.</span>DL<span> //</span></div>
+  <div class="api-pills" id="api-pills">
+    <div class="pill off">YT API</div>
+    <div class="pill off">Last.fm</div>
+    <div class="pill off">Spotify</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div>
+      <div class="section-label">Search Mode</div>
+      <div class="mode-grid">
+        <button class="mode-btn active" data-mode="trending" onclick="setMode('trending',this)">
+          <span class="icon">🔥</span>Trending
+        </button>
+        <button class="mode-btn" data-mode="hot100" onclick="setMode('hot100',this)">
+          <span class="icon">🎵</span>Spotify Hot
+        </button>
+        <button class="mode-btn" data-mode="genre" onclick="setMode('genre',this)">
+          <span class="icon">🎸</span>By Genre
+        </button>
+        <button class="mode-btn" data-mode="new" onclick="setMode('new',this)">
+          <span class="icon">✨</span>New Drops
+        </button>
+        <button class="mode-btn" data-mode="views" onclick="setMode('views',this)">
+          <span class="icon">📈</span>Top Views
+        </button>
+        <button class="mode-btn" data-mode="upandcoming" onclick="setMode('upandcoming',this)">
+          <span class="icon">🚀</span>Rising
+        </button>
+        <button class="mode-btn" data-mode="keyword" onclick="setMode('keyword',this)" style="grid-column:span 2">
+          <span class="icon">🔍</span>Keyword Search
+        </button>
+      </div>
+    </div>
+
+    <div id="genre-section" style="display:none">
+      <div class="section-label">Genre</div>
+      <div class="genre-chips">
+        <div class="chip active" onclick="setGenre('pop',this)">Pop</div>
+        <div class="chip" onclick="setGenre('hip-hop',this)">Hip-Hop</div>
+        <div class="chip" onclick="setGenre('r&b',this)">R&B</div>
+        <div class="chip" onclick="setGenre('rock',this)">Rock</div>
+        <div class="chip" onclick="setGenre('electronic',this)">Electronic</div>
+        <div class="chip" onclick="setGenre('country',this)">Country</div>
+        <div class="chip" onclick="setGenre('latin',this)">Latin</div>
+        <div class="chip" onclick="setGenre('k-pop',this)">K-Pop</div>
+        <div class="chip" onclick="setGenre('indie',this)">Indie</div>
+        <div class="chip" onclick="setGenre('jazz',this)">Jazz</div>
+        <div class="chip" onclick="setGenre('metal',this)">Metal</div>
+        <div class="chip" onclick="setGenre('soul',this)">Soul</div>
+      </div>
+    </div>
+
+    <div id="keyword-section" style="display:none">
+      <div class="section-label">Search Query</div>
+      <input class="kw-input" id="kw-input" placeholder="e.g. Billie Eilish, lo-fi beats…" />
+    </div>
+
+    <div>
+      <div class="count-row">
+        <div class="section-label" style="margin:0">Results</div>
+        <div class="count-val" id="count-val">10</div>
+      </div>
+      <input type="range" id="count-slider" min="1" max="50" value="10" step="1"
+        oninput="document.getElementById('count-val').textContent=this.value">
+    </div>
+
+    <button class="search-btn" id="search-btn" onclick="doSearch()">Search →</button>
+  </div>
+
+  <div class="content" id="content-area">
+    <div class="empty-state">
+      <div class="empty-icon">🎧</div>
+      <div class="empty-text">Choose a search mode and hit <strong>Search</strong> to browse music videos</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000';
+let currentMode = 'trending';
+let currentGenre = 'pop';
+let selectedIds = new Set();
+let allVideos = [];
+let downloadedIds = new Set();
+let toast = null;
+
+async function checkStatus() {
+  try {
+    const r = await fetch(API + '/api/status');
+    const d = await r.json();
+    const pills = document.getElementById('api-pills');
+    pills.innerHTML = `
+      <div class="pill ${d.youtube_api?'on':'off'}">YT API</div>
+      <div class="pill ${d.lastfm_api?'on':'off'}">Last.fm</div>
+      <div class="pill ${d.spotify_api?'on':'off'}">Spotify</div>`;
+  } catch(e) {
+    showToast('Cannot reach server at localhost:5000 — is server.py running?', 'error');
+  }
+}
+
+function setMode(mode, el) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('genre-section').style.display   = mode === 'genre'   ? '' : 'none';
+  document.getElementById('keyword-section').style.display = mode === 'keyword' ? '' : 'none';
+}
+
+function setGenre(g, el) {
+  currentGenre = g;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+async function doSearch() {
+  const count = parseInt(document.getElementById('count-slider').value);
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true; btn.textContent = 'Searching…';
+  selectedIds.clear();
+  const ca = document.getElementById('content-area');
+  ca.innerHTML = skeletonHTML(count);
+  const body = { mode: currentMode, count };
+  if (currentMode === 'genre')   body.genre   = currentGenre;
+  if (currentMode === 'keyword') body.keyword = document.getElementById('kw-input').value || 'music';
+  try {
+    const r = await fetch(API + '/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Search failed');
+    allVideos = d.videos;
+    renderResults(d.videos);
+  } catch(e) {
+    ca.innerHTML = `<div class="error-banner"><span>⚠</span><div>${e.message}</div></div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Search →';
+}
+
+function skeletonHTML(n) {
+  return `<div class="loading-grid">${Array(n).fill(0).map(()=>`<div class="skel"><div class="skel-thumb"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`).join('')}</div>`;
+}
+
+function renderResults(videos) {
+  const ca = document.getElementById('content-area');
+  if (!videos.length) { ca.innerHTML=`<div class="empty-state"><div class="empty-icon">🔇</div><div class="empty-text">No results found.</div></div>`; return; }
+  const selCount = selectedIds.size;
+  ca.innerHTML = `<div class="toolbar"><div class="results-info"><strong>${videos.length}</strong> videos found</div><div class="toolbar-right"><button class="select-all-btn" onclick="toggleSelectAll()">${selCount===videos.length?'Deselect All':'Select All'}</button><button class="dl-btn" id="dl-btn" onclick="startDownload()" ${selCount===0?'disabled':''}>↓ Download ${selCount>0?selCount:'Selected'}</button></div></div><div class="video-grid" id="video-grid">${videos.map(v=>cardHTML(v)).join('')}</div>`;
+}
+
+function cardHTML(v) {
+  const sel=selectedIds.has(v.id),done=downloadedIds.has(v.id);
+  const views=v.views?fmtViews(v.views):'',dur=v.duration?fmtDur(v.duration):'';
+  return `<div class="vcard${sel?' selected':''}${done?' downloaded':''}" id="card-${v.id}" onclick="toggleSelect('${v.id}')">${done?`<div class="downloaded-badge">✓ saved</div>`:''}<div class="vcard-thumb">${v.thumbnail?`<img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`:`<div class="thumb-fallback">🎵</div>`}${dur?`<div class="duration-badge">${dur}</div>`:''}<div class="select-overlay"><div class="check-circle">✓</div></div></div><div class="vcard-body"><div class="vcard-song">${esc(v.song||v.title)}</div><div class="vcard-artist">${esc(v.artist||v.channel)}</div>${views?`<div class="vcard-views"><span>${views}</span> views</div>`:''}</div></div>`;
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function fmtViews(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n;}
+function fmtDur(s){const m=Math.floor(s/60),sec=s%60;return`${m}:${String(sec).padStart(2,'0')}`;}
+
+function toggleSelect(id) {
+  if(selectedIds.has(id))selectedIds.delete(id);else selectedIds.add(id);
+  const card=document.getElementById('card-'+id);
+  if(card)card.classList.toggle('selected',selectedIds.has(id));
+  updateToolbar();
+}
+
+function toggleSelectAll() {
+  if(selectedIds.size===allVideos.length)selectedIds.clear();
+  else allVideos.forEach(v=>selectedIds.add(v.id));
+  renderResults(allVideos);
+}
+
+function updateToolbar() {
+  const n=selectedIds.size;
+  const btn=document.getElementById('dl-btn');
+  const sab=document.querySelector('.select-all-btn');
+  if(btn){btn.disabled=n===0;btn.textContent=`↓ Download ${n>0?n:'Selected'}`;}
+  if(sab)sab.textContent=n===allVideos.length?'Deselect All':'Select All';
+}
+
+async function startDownload() {
+  const videos=allVideos.filter(v=>selectedIds.has(v.id));
+  if(!videos.length)return;
+  const ca=document.getElementById('content-area');
+  ca.innerHTML=`<div class="dl-progress"><div class="dl-header"><div class="dl-title">Downloading</div><div class="dl-counter" id="dl-counter">0 / ${videos.length}</div></div><div class="dl-tracks">${videos.map(v=>`<div class="dl-track" id="dlrow-${v.id}"><div class="dl-track-name">${esc(v.song||v.title)}</div><div class="dl-track-status status-pending" id="dlst-${v.id}">waiting</div></div>`).join('')}</div></div>`+ca.innerHTML;
+  let done=0;
+  for(const video of videos){
+    const st=document.getElementById('dlst-'+video.id);
+    if(st){st.textContent='downloading…';st.className='dl-track-status status-downloading';}
+    try{
+      const r=await fetch(API+'/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videos:[video]})});
+      const d=await r.json();
+      const res=d.results?.[0];
+      done++;
+      const ctr=document.getElementById('dl-counter');
+      if(ctr)ctr.textContent=`${done} / ${videos.length}`;
+      if(res?.status==='ok'){downloadedIds.add(video.id);if(st){st.textContent='✓ saved';st.className='dl-track-status status-done';}}
+      else{if(st){st.textContent='✗ error';st.className='dl-track-status status-error';}}
+    }catch(e){done++;if(st){st.textContent='✗ failed';st.className='dl-track-status status-error';}}
+  }
+  showToast(`Downloaded ${downloadedIds.size} track${downloadedIds.size!==1?'s':''}`, 'success');
+  selectedIds.clear();
+}
+
+function showToast(msg,type='success'){
+  if(toast)toast.remove();
+  toast=document.createElement('div');
+  toast.className=`toast ${type}`;toast.textContent=msg;
+  document.body.appendChild(toast);
+  setTimeout(()=>{if(toast){toast.remove();toast=null;}},4000);
+}
+
+checkStatus();
+</script>
+</body>
+</html>
