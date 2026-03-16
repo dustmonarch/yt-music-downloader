@@ -68,7 +68,8 @@ input[type=range]{width:100%;accent-color:var(--accent);height:3px}
 .check-circle{width:32px;height:32px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:14px}
 .vcard-body{padding:10px 12px 12px}
 .vcard-song{font-size:13px;font-weight:500;color:var(--text);line-height:1.35;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.vcard-artist{font-size:11px;color:var(--muted);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vcard-artist{font-size:11px;color:var(--muted);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vcard-album{font-size:10px;color:#6366f1;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
 .vcard-views{font-family:var(--font-mono);font-size:10px;color:var(--muted)}
 .vcard-views span{color:#6366f1}
 .downloaded-badge{position:absolute;top:7px;left:7px;background:#4ade8022;border:1px solid #4ade8055;color:var(--green);font-size:10px;font-family:var(--font-mono);padding:2px 7px;border-radius:20px}
@@ -185,17 +186,31 @@ input[type=range]{width:100%;accent-color:var(--accent);height:3px}
 </div>
 
 <script>
-const API = '';
 let currentMode = 'trending';
 let currentGenre = 'pop';
 let selectedIds = new Set();
 let allVideos = [];
+// downloadedIds: Set of video IDs known to be already downloaded
 let downloadedIds = new Set();
+// downloadedKeys: Set of "normartist|normsong" strings for fuzzy duplicate detection
+let downloadedKeys = new Set();
 let toast = null;
+
+// ── Normalise string for fuzzy matching (mirrors server norm()) ────────────
+function norm(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function videoKey(v){ return norm(v.artist||v.channel)+'|'+norm(v.song||v.title); }
+function isDownloaded(v){
+  return downloadedIds.has(v.id) || downloadedKeys.has(videoKey(v));
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function boot() {
+  await Promise.all([checkStatus(), loadDownloaded()]);
+}
 
 async function checkStatus() {
   try {
-    const r = await fetch(API + '/api/status');
+    const r = await fetch('/api/status');
     const d = await r.json();
     const pills = document.getElementById('api-pills');
     pills.innerHTML = `
@@ -207,6 +222,19 @@ async function checkStatus() {
   }
 }
 
+// Fetch the set of already-downloaded video ids & artist|song keys from the server
+async function loadDownloaded() {
+  try {
+    const r = await fetch('/api/downloaded');
+    const d = await r.json();
+    if (d.ok) {
+      downloadedIds  = new Set(d.ids  || []);
+      downloadedKeys = new Set(d.keys || []);
+    }
+  } catch(e) { /* non-fatal */ }
+}
+
+// ── Mode / genre ──────────────────────────────────────────────────────────────
 function setMode(mode, el) {
   currentMode = mode;
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -221,6 +249,7 @@ function setGenre(g, el) {
   el.classList.add('active');
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
 async function doSearch() {
   const count = parseInt(document.getElementById('count-slider').value);
   const btn = document.getElementById('search-btn');
@@ -232,13 +261,15 @@ async function doSearch() {
   if (currentMode === 'genre')   body.genre   = currentGenre;
   if (currentMode === 'keyword') body.keyword = document.getElementById('kw-input').value || 'music';
   try {
-    const r = await fetch(API + '/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r = await fetch('/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'Search failed');
     allVideos = d.videos;
+    // Refresh downloaded state before rendering (in case user downloaded in another tab)
+    await loadDownloaded();
     renderResults(d.videos);
   } catch(e) {
-    ca.innerHTML = `<div class="error-banner"><span>⚠</span><div>${e.message}</div></div>`;
+    ca.innerHTML = `<div class="error-banner"><span>⚠</span><div>${esc(e.message)}</div></div>`;
   }
   btn.disabled = false; btn.textContent = 'Search →';
 }
@@ -247,77 +278,155 @@ function skeletonHTML(n) {
   return `<div class="loading-grid">${Array(n).fill(0).map(()=>`<div class="skel"><div class="skel-thumb"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`).join('')}</div>`;
 }
 
+// ── Render ────────────────────────────────────────────────────────────────────
 function renderResults(videos) {
   const ca = document.getElementById('content-area');
-  if (!videos.length) { ca.innerHTML=`<div class="empty-state"><div class="empty-icon">🔇</div><div class="empty-text">No results found.</div></div>`; return; }
+  if (!videos.length) {
+    ca.innerHTML=`<div class="empty-state"><div class="empty-icon">🔇</div><div class="empty-text">No results found.</div></div>`;
+    return;
+  }
   const selCount = selectedIds.size;
-  ca.innerHTML = `<div class="toolbar"><div class="results-info"><strong>${videos.length}</strong> videos found</div><div class="toolbar-right"><button class="select-all-btn" onclick="toggleSelectAll()">${selCount===videos.length?'Deselect All':'Select All'}</button><button class="dl-btn" id="dl-btn" onclick="startDownload()" ${selCount===0?'disabled':''}>↓ Download ${selCount>0?selCount:'Selected'}</button></div></div><div class="video-grid" id="video-grid">${videos.map(v=>cardHTML(v)).join('')}</div>`;
+  // Count how many in results are already downloaded (for info display)
+  const doneCount = videos.filter(v => isDownloaded(v)).length;
+  const infoExtra = doneCount > 0 ? ` <span style="color:var(--green);font-size:10px">(${doneCount} already saved)</span>` : '';
+  ca.innerHTML = `
+    <div class="toolbar">
+      <div class="results-info"><strong>${videos.length}</strong> videos found${infoExtra}</div>
+      <div class="toolbar-right">
+        <button class="select-all-btn" onclick="toggleSelectAll()">${selCount===videos.length?'Deselect All':'Select All'}</button>
+        <button class="dl-btn" id="dl-btn" onclick="startDownload()" ${selCount===0?'disabled':''}>↓ Download ${selCount>0?selCount:'Selected'}</button>
+      </div>
+    </div>
+    <div class="video-grid" id="video-grid">${videos.map(v=>cardHTML(v)).join('')}</div>`;
 }
 
 function cardHTML(v) {
-  const sel=selectedIds.has(v.id),done=downloadedIds.has(v.id);
-  const views=v.views?fmtViews(v.views):'',dur=v.duration?fmtDur(v.duration):'';
-  return `<div class="vcard${sel?' selected':''}${done?' downloaded':''}" id="card-${v.id}" onclick="toggleSelect('${v.id}')">${done?`<div class="downloaded-badge">✓ saved</div>`:''}<div class="vcard-thumb">${v.thumbnail?`<img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`:`<div class="thumb-fallback">🎵</div>`}${dur?`<div class="duration-badge">${dur}</div>`:''}<div class="select-overlay"><div class="check-circle">✓</div></div></div><div class="vcard-body"><div class="vcard-song">${esc(v.song||v.title)}</div><div class="vcard-artist">${esc(v.artist||v.channel)}</div>${views?`<div class="vcard-views"><span>${views}</span> views</div>`:''}</div></div>`;
+  const sel  = selectedIds.has(v.id);
+  const done = isDownloaded(v);
+  const views = v.views ? fmtViews(v.views) : '';
+  const dur   = v.duration ? fmtDur(v.duration) : '';
+  // Album hint: only shown if we have one from Spotify hot100
+  const albumLine = v.album_hint
+    ? `<div class="vcard-album">${esc(v.album_hint)}</div>`
+    : '';
+  return `
+    <div class="vcard${sel?' selected':''}${done?' downloaded':''}" id="card-${v.id}" onclick="toggleSelect('${v.id}')">
+      ${done ? `<div class="downloaded-badge">✓ saved</div>` : ''}
+      <div class="vcard-thumb">
+        ${v.thumbnail
+          ? `<img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`
+          : `<div class="thumb-fallback">🎵</div>`}
+        ${dur ? `<div class="duration-badge">${dur}</div>` : ''}
+        <div class="select-overlay"><div class="check-circle">✓</div></div>
+      </div>
+      <div class="vcard-body">
+        <div class="vcard-song">${esc(v.song||v.title)}</div>
+        <div class="vcard-artist">${esc(v.artist||v.channel)}</div>
+        ${albumLine}
+        ${views ? `<div class="vcard-views"><span>${views}</span> views</div>` : ''}
+      </div>
+    </div>`;
 }
 
 function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
-function fmtViews(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n;}
+function fmtViews(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return String(n);}
 function fmtDur(s){const m=Math.floor(s/60),sec=s%60;return`${m}:${String(sec).padStart(2,'0')}`;}
 
+// ── Selection ─────────────────────────────────────────────────────────────────
 function toggleSelect(id) {
-  if(selectedIds.has(id))selectedIds.delete(id);else selectedIds.add(id);
-  const card=document.getElementById('card-'+id);
-  if(card)card.classList.toggle('selected',selectedIds.has(id));
+  if(selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  const card = document.getElementById('card-'+id);
+  if(card) card.classList.toggle('selected', selectedIds.has(id));
   updateToolbar();
 }
 
 function toggleSelectAll() {
-  if(selectedIds.size===allVideos.length)selectedIds.clear();
-  else allVideos.forEach(v=>selectedIds.add(v.id));
+  if(selectedIds.size === allVideos.length) selectedIds.clear();
+  else allVideos.forEach(v => selectedIds.add(v.id));
   renderResults(allVideos);
 }
 
 function updateToolbar() {
-  const n=selectedIds.size;
-  const btn=document.getElementById('dl-btn');
-  const sab=document.querySelector('.select-all-btn');
-  if(btn){btn.disabled=n===0;btn.textContent=`↓ Download ${n>0?n:'Selected'}`;}
-  if(sab)sab.textContent=n===allVideos.length?'Deselect All':'Select All';
+  const n   = selectedIds.size;
+  const btn = document.getElementById('dl-btn');
+  const sab = document.querySelector('.select-all-btn');
+  if(btn){ btn.disabled = n===0; btn.textContent = `↓ Download ${n>0?n:'Selected'}`; }
+  if(sab) sab.textContent = n===allVideos.length ? 'Deselect All' : 'Select All';
 }
 
+// ── Download ──────────────────────────────────────────────────────────────────
 async function startDownload() {
-  const videos=allVideos.filter(v=>selectedIds.has(v.id));
-  if(!videos.length)return;
-  const ca=document.getElementById('content-area');
-  ca.innerHTML=`<div class="dl-progress"><div class="dl-header"><div class="dl-title">Downloading</div><div class="dl-counter" id="dl-counter">0 / ${videos.length}</div></div><div class="dl-tracks">${videos.map(v=>`<div class="dl-track" id="dlrow-${v.id}"><div class="dl-track-name">${esc(v.song||v.title)}</div><div class="dl-track-status status-pending" id="dlst-${v.id}">waiting</div></div>`).join('')}</div></div>`+ca.innerHTML;
-  let done=0;
+  const videos = allVideos.filter(v => selectedIds.has(v.id));
+  if(!videos.length) return;
+  const ca = document.getElementById('content-area');
+  ca.innerHTML = `
+    <div class="dl-progress">
+      <div class="dl-header">
+        <div class="dl-title">Downloading</div>
+        <div class="dl-counter" id="dl-counter">0 / ${videos.length}</div>
+      </div>
+      <div class="dl-tracks">
+        ${videos.map(v=>`
+          <div class="dl-track" id="dlrow-${v.id}">
+            <div class="dl-track-name">${esc(v.song||v.title)}</div>
+            <div class="dl-track-status status-pending" id="dlst-${v.id}">waiting</div>
+          </div>`).join('')}
+      </div>
+    </div>` + ca.innerHTML;
+
+  let done = 0;
   for(const video of videos){
-    const st=document.getElementById('dlst-'+video.id);
-    if(st){st.textContent='downloading…';st.className='dl-track-status status-downloading';}
+    const st = document.getElementById('dlst-'+video.id);
+    if(st){ st.textContent='downloading…'; st.className='dl-track-status status-downloading'; }
     try{
-      const r=await fetch(API+'/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videos:[video]})});
-      const d=await r.json();
-      const res=d.results?.[0];
+      const r = await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videos:[video]})});
+      const d = await r.json();
+      const res = d.results?.[0];
       done++;
-      const ctr=document.getElementById('dl-counter');
-      if(ctr)ctr.textContent=`${done} / ${videos.length}`;
-      if(res?.status==='ok'){downloadedIds.add(video.id);if(st){st.textContent='✓ saved';st.className='dl-track-status status-done';}}
-      else{if(st){st.textContent='✗ error';st.className='dl-track-status status-error';}}
-    }catch(e){done++;if(st){st.textContent='✗ failed';st.className='dl-track-status status-error';}}
+      const ctr = document.getElementById('dl-counter');
+      if(ctr) ctr.textContent = `${done} / ${videos.length}`;
+      if(res?.status === 'ok'){
+        // Mark in both id set and fuzzy key set immediately
+        downloadedIds.add(video.id);
+        downloadedKeys.add(videoKey(video));
+        // Update the card in the grid (it may still be visible behind the progress panel)
+        const card = document.getElementById('card-'+video.id);
+        if(card){
+          card.classList.add('downloaded');
+          if(!card.querySelector('.downloaded-badge')){
+            const badge = document.createElement('div');
+            badge.className = 'downloaded-badge';
+            badge.textContent = '✓ saved';
+            card.prepend(badge);
+          }
+        }
+        if(st){ st.textContent='✓ saved'; st.className='dl-track-status status-done'; }
+      } else {
+        if(st){ st.textContent='✗ error'; st.className='dl-track-status status-error'; }
+      }
+    } catch(e){
+      done++;
+      if(st){ st.textContent='✗ failed'; st.className='dl-track-status status-error'; }
+    }
   }
-  showToast(`Downloaded ${downloadedIds.size} track${downloadedIds.size!==1?'s':''}`, 'success');
+  const newDlCount = videos.filter(v => downloadedIds.has(v.id)).length;
+  showToast(`Saved ${newDlCount} track${newDlCount!==1?'s':''}`, 'success');
   selectedIds.clear();
+  updateToolbar();
 }
 
-function showToast(msg,type='success'){
-  if(toast)toast.remove();
-  toast=document.createElement('div');
-  toast.className=`toast ${type}`;toast.textContent=msg;
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type='success'){
+  if(toast) toast.remove();
+  toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
   document.body.appendChild(toast);
-  setTimeout(()=>{if(toast){toast.remove();toast=null;}},4000);
+  setTimeout(()=>{ if(toast){ toast.remove(); toast=null; } }, 4000);
 }
 
-checkStatus();
+boot();
 </script>
 </body>
 </html>
