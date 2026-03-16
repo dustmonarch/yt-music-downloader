@@ -185,7 +185,7 @@ input[type=range]{width:100%;accent-color:var(--accent);height:3px}
 </div>
 
 <script>
-const API = 'http://localhost:5000';
+const API = '';
 let currentMode = 'trending';
 let currentGenre = 'pop';
 let selectedIds = new Set();
@@ -203,7 +203,7 @@ async function checkStatus() {
       <div class="pill ${d.lastfm_api?'on':'off'}">Last.fm</div>
       <div class="pill ${d.spotify_api?'on':'off'}">Spotify</div>`;
   } catch(e) {
-    showToast('Cannot reach server at localhost:5000 — is server.py running?', 'error');
+    showToast('Server error — make sure server.py is running and you opened http://localhost:5000', 'error');
   }
 }
 
